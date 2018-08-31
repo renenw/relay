@@ -26,7 +26,7 @@ mkdirp.sync(DONE);
 moveFiles(IN, RETRY);
 moveFiles(WIP, RETRY);
 
-// setInterval(retry, 5000);
+setInterval(retry, 60000);
 
 ////////////////////////////////////// Web Posts
 
