@@ -4,6 +4,17 @@ Listens on HTTP, and to UDP, and relays what is received to an AWS Gateway. From
 
 Intention is to run it on a Raspberry Pi.
 
+# Architecture
+
+Relies on directories as a queing mechanism.
+
+1. Submissions (HTTP or UDP) are initially written out as JSON files in the IN directory.
+1. Node reacts to these new files, copying them into a WIP directory.
+1. From the WIP directory, they are pushed, via HTTP, to an AWS Gateway.
+1. Failures are moved to a RETRY directory, and periodically reattempted.
+
+Note, your gateway API should be idempontent. File names uniquely identify submissions.
+
 # Config
 
 sudo mkdir /var/iot_relay
