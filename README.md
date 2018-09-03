@@ -22,3 +22,12 @@ sudo chmod 777 /var/iot_relay/
 
 npm install mkdirp --save
 npm install request --save
+
+
+## Environment
+
+```
+export AWS_API_KEY=
+export DEVICE_NAME=       # default: RELAY_DEV
+export MESSAGE_DIRECTORY= # default: /var/iot_relay
+```

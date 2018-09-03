@@ -6,15 +6,18 @@ let fs = require('fs');
 let mkdirp = require('mkdirp');
 let request = require('request');
 
+const DEVICE_NAME = process.env.DEVICE_NAME || 'relay_dev';
 const GATEWAY = 'https://api.121.co.za/relay'
 const API_KEY = process.env.AWS_API_KEY
-console.log(API_KEY);
-
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
+
 const IN = HOME_DIRECTORY + '/in'
 const WIP = HOME_DIRECTORY + '/wip'
 const RETRY = HOME_DIRECTORY + '/retry'
 const DONE = HOME_DIRECTORY + '/done'
+
+let failures = 0;
+let successes = 0;
 
 mkdirp.sync(IN);
 mkdirp.sync(WIP);
@@ -50,6 +53,7 @@ server.post('/', jsonParser, (request,response)=>{
   response.status(202).end();
 });
 
+// allow submission using get request and query string
 server.get('/', (request,response)=>{
   if (source) { write(request.query); }
   response.status(202).end();
@@ -108,10 +112,12 @@ function postFile(filename, data) {
 function postSuccess(filename) {
   let directory = DONE + '/' + (new Date().toISOString().substring(0,10));
   mkdirp(directory, (err, made) => { moveFile(WIP, filename, directory) });
+  successes = successes + 1;
 }
 
 function postFailure(filename) {
   moveFile(WIP, filename, RETRY);
+  failures = failures + 1;
 }
 
 function moveFile(fromDirectory, filename, toDirectory) {
@@ -128,6 +134,17 @@ function moveFiles(fromDirectory, toDirectory) {
 }
 
 function retry() {
-  console.log('retry');
   moveFiles(RETRY, WIP);
+}
+
+function uploadCounts() {
+  write({
+          source: DEVICE_NAME,
+          payload: {
+              successes: successes,
+              failures: failures
+        }
+  });
+  successes = 0;
+  failures = 0;
 }
