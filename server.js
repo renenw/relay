@@ -4,11 +4,11 @@
 
 let fs = require('fs');
 let mkdirp = require('mkdirp');
-var request = require('request');
+let request = require('request');
 
 const GATEWAY = 'https://api.121.co.za/relay'
-
-const API_KEY = 'pt4iaFfL0G3yi8e7CYJWYbs79YrPFpX5WhePwDDb'
+const API_KEY = process.env.AWS_API_KEY
+console.log(API_KEY);
 
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
 const IN = HOME_DIRECTORY + '/in'
@@ -27,6 +27,7 @@ moveFiles(IN, RETRY);
 moveFiles(WIP, RETRY);
 
 setInterval(retry, 60000);
+setInterval(uploadCounts, 60000);
 
 ////////////////////////////////////// Web Posts
 
