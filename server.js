@@ -2,14 +2,17 @@
 
 ////////////////////////////////////// Init
 
-let fs = require('fs');
-let mkdirp = require('mkdirp');
-let request = require('request');
+const fs = require('fs');
+const mkdirp = require('mkdirp');
+// const request = require('request');
+const os = require("os");
 
-const DEVICE_NAME = process.env.DEVICE_NAME || 'relay_dev';
+const DEVICE_NAME = process.env.DEVICE_NAME || os.hostname();
 const GATEWAY = 'https://api.121.co.za/relay'
 const API_KEY = process.env.AWS_API_KEY
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
+const HTTP_PORT = process.env.HTTP_PORT || 3553
+const UDP_PORT = process.env.UDP_PORT || 54545
 
 const IN = HOME_DIRECTORY + '/in'
 const WIP = HOME_DIRECTORY + '/wip'
@@ -24,7 +27,14 @@ mkdirp.sync(WIP);
 mkdirp.sync(RETRY);
 mkdirp.sync(DONE);
 
+
 ////////////////////////////////////// Startup
+
+logString(`Starting: ${DEVICE_NAME}`);
+logString(`HTTP on ${HTTP_PORT}`);
+logString(`UDP on ${UDP_PORT}`);
+logString(`Working directory: ${HOME_DIRECTORY}`);
+logString(`API endpoint: ${GATEWAY}`);
 
 moveFiles(IN, RETRY);
 moveFiles(WIP, RETRY);
@@ -32,35 +42,72 @@ moveFiles(WIP, RETRY);
 setInterval(retry, 60000);
 setInterval(uploadCounts, 60000);
 
+
+////////////////////////////////////// UDP Submissions
+const dgram = require('dgram');
+const udp_server = dgram.createSocket('udp4');
+
+udp_server.on('error', (err) => {
+  logString(`udp_server error:\n${err.stack}`);
+  udp_server.close();
+});
+
+udp_server.on('message', (message, rinfo) => {
+  logString(`udp_server got: ${message} from ${rinfo.address}:${rinfo.port}`);
+
+  let udp_message = message.toString();
+  let index = udp_message.indexOf(' ');
+  let source = udp_message.substring(0, index).trim();
+  let payload = udp_message.substr(index + 1).trim();
+  
+  write( { source: source, payload: payload } );
+});
+
+udp_server.on('listening', () => {
+  const address = udp_server.address();
+  logString(`UDP listener listening on ${address.address}:${address.port}`);
+});
+
+udp_server.bind(UDP_PORT);
+
+
 ////////////////////////////////////// Web Posts
 
-let express = require('express');
-let bodyParser = require('body-parser');
+const express = require('express');
+const bodyParser = require('body-parser');
 
-let server = express();
+let http_server = express();
 let jsonParser = bodyParser.json({ type: function() {return true;} });
 
-server.set('port', process.env.PORT || 3000);
+http_server.set('port', HTTP_PORT);
 
 // either receive input as a complete body (JSON, with a 'source' tag), or
 // read the source from the query string.
-server.post('/', jsonParser, (request,response)=>{
+http_server.post('/', jsonParser, (request,response)=>{
+  let code = 202;
   if (request.body['source']) {
     write(request.body);
   } else if (request.query['source']) {
     write( { source: request.query['source'], payload: request.body } );
+  } else {
+    code = 400;
   }
-  response.status(202).end();
+  response.status(code).end();
 });
 
 // allow submission using get request and query string
-server.get('/', (request,response)=>{
-  if (source) { write(request.query); }
-  response.status(202).end();
+http_server.get('/', (request,response)=>{
+  let code = 202;
+  if (request.query['source']) {
+    write(request.query);
+  } else {
+    code = 400;
+  }
+  response.status(code).end();
 });
 
-server.listen(server.get('port'), ()=>{
-  console.log('Relay server started on port ' + server.get('port'));
+http_server.listen(http_server.get('port'), ()=>{
+  logString('HTTP listener started on port ' + http_server.get('port'));
 });
 
 function write(data) {
@@ -69,6 +116,7 @@ function write(data) {
   let fileName = IN + '/' + data.uid;
   fs.writeFile(fileName, JSON.stringify(data), (err)=>{ if (err) throw err; });
 }
+
 
 ////////////////////////////////////// File System watcher
 
@@ -85,7 +133,7 @@ watch_wip.on('change', function name(event, filename) {
   if (fs.existsSync(sourceFile)) {
     fs.readFile(sourceFile, 'utf8', (err, data) => {
         if (err) {
-          console.log('Unable to read file: ' + err); 
+          logString('Unable to read file: ' + err); 
         } else {
           postFile(filename, data);
         }
@@ -96,17 +144,21 @@ watch_wip.on('change', function name(event, filename) {
 
 ////////////////////////////////////// Helper functions
 
+function logString(s) {
+  console.log(s)
+}
+
 function postFile(filename, data) {
-  request.post(GATEWAY, {timeout: 2000, body: data, headers: { 'x-api-key': API_KEY }}, function(err, response) {
-    if (err || response && response.statusCode!==202) {
-      console.log('Failed to relay ' + filename);
-      console.log('Response: ' + (response && response.statusCode));
-      console.log('Error: ' + err.message);
-      postFailure(filename);
-    } else {
-      postSuccess(filename);
-    }
-  });
+  // request.post(GATEWAY, {timeout: 2000, body: data, headers: { 'x-api-key': API_KEY }}, function(err, response) {
+  //   if (err || response && response.statusCode!==202) {
+  //     console.log('Failed to relay ' + filename);
+  //     console.log('Response: ' + (response && response.statusCode));
+  //     console.log('Error: ' + err.message);
+  //     postFailure(filename);
+  //   } else {
+  //     postSuccess(filename);
+  //   }
+  // });
 }
 
 function postSuccess(filename) {

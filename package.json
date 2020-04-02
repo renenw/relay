@@ -9,8 +9,7 @@
   "author": "renen",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.16.3",
-    "mkdirp": "^0.5.1",
-    "request": "^2.88.0"
+    "express": "^4.17.1",
+    "mkdirp": "^1.0.3"
   }
 }
