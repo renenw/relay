@@ -12,7 +12,7 @@ const axios = require('axios')
 
 const DEVICE_NAME = process.env.DEVICE_NAME || os.hostname();
 const GATEWAY = process.env.GATEWAY || 'https://relay.free.beeceptor.com'
-const API_KEY = process.env.API_KEY
+const API_KEY = process.env.API_KEY || ''
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
 const HTTP_PORT = process.env.HTTP_PORT || 3553
 const UDP_PORT = process.env.UDP_PORT || 54545
@@ -64,12 +64,10 @@ udp_server.on('error', (err) => {
 
 udp_server.on('message', (message, rinfo) => {
   logString(`udp_server got: ${message} from ${rinfo.address}:${rinfo.port}`);
-
   let udp_message = message.toString();
   let index = udp_message.indexOf(' ');
   let source = udp_message.substring(0, index).trim();
   let payload = udp_message.substr(index + 1).trim();
-  
   write( { source: source, payload: payload } );
 });
 
@@ -91,6 +89,7 @@ http_server.set('port', HTTP_PORT);
 // either receive input as a complete body (JSON, with a 'source' tag), or
 // read the source from the query string.
 http_server.post('/', jsonParser, (request,response)=>{
+  logString(`http_server POST from ${request.ip}`);
   let code = 202;
   if (request.body['source']) {
     write(request.body);
@@ -104,6 +103,7 @@ http_server.post('/', jsonParser, (request,response)=>{
 
 // allow submission using get request and query string
 http_server.get('/', (request,response)=>{
+  logString(`http_server GET from ${request.ip}`);
   let code = 202;
   if (request.query['source']) {
     write(request.query);
@@ -146,22 +146,16 @@ watch_wip.on('change', function name(event, filename) {
 
 function postFile(filename, data) {
   axios.post(GATEWAY, data, http_post_options)
-    .then((res) => { postSuccess(filename); })
-    .catch((error) => {
-      logString('Failed to relay ' + filename);
-      console.log(error);
-      postFailure(filename);
-    });
-  // request.post(GATEWAY, {timeout: 2000, body: data, headers: { 'x-api-key': API_KEY }}, function(err, response) {
-  //   if (err || response && response.statusCode!==202) {
-  //     console.log('Failed to relay ' + filename);
-  //     console.log('Response: ' + (response && response.statusCode));
-  //     console.log('Error: ' + err.message);
-  
-  //   } else {
-  //     postSuccess(filename);
-  //   }
-  // });
+  .then((res) => {
+    let awsRequestId = res.headers['x-amzn-requestid'];
+    console.log(awsRequestId ? `Uploaded. Request ID: ${awsRequestId}` : 'Uploaded. No request id.')
+    postSuccess(filename);
+  })
+  .catch((error) => {
+    logString('Failed to relay ' + filename);
+    console.log(error);
+    postFailure(filename);
+  });
 }
 
 function postSuccess(filename) {

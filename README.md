@@ -3,7 +3,7 @@
 
 Listens on HTTP, and to UDP, and relays what is received to an AWS Gateway. From the Gateway, you can leverage standard AWS mechanisms for processing the messages.
 
-The Arduino code that feeds this relay can be seen [here](https://github.com/renenw/harduino).
+Examples of Arduino applications that feeds this relay can be seen [here](https://github.com/renenw/harduino). The key function can be seen below.
 
 This code runs on a Raspberry Pi 3b, which also hosts a Nginx proxy to deal with inbound requests.
 
@@ -13,14 +13,8 @@ I have several Arduino devices that track things like the depth of my swimming p
 
 This little server acts as a relay, pushing UDP requests (and HTTP requests) to AWS.
 
-# Relay End Point
-A JSON object is constructed with four fields, and POST'ed to the `GATEWAY`. The JSON object is as follows:
-|Field|Description|
-|-|-|
-|`source`|The device or source from which this message originates|
-|`payload`|The payload. Either the message part of the UDP packet. Or, the JSON body submitted via HTTP.|
-|`received`|The time, in seconds with millisecond resolution, that this packet was written to a queue by the relay server.|
-|`uid`|A unique identifier.|
+# Relay Gateway End Point
+A JSON object is constructed with four fields, and POST'ed to the `GATEWAY` (typically, a AWS API Gateway connected to an SNS topic). The JSON object submitted is as follows:
 ```
 {
   "source":"my_sensor",
@@ -29,14 +23,36 @@ A JSON object is constructed with four fields, and POST'ed to the `GATEWAY`. The
   "uid":"1585834636.495.91480029"
 }
 ```
+|Field|Description|
+|-|-|
+|`source`|The device or source from which this message originates|
+|`payload`|The payload. Either the message part of the UDP packet. Or, the JSON body submitted via HTTP.|
+|`received`|The time, in seconds with millisecond resolution, that this packet was written to a queue by the relay server.|
+|`uid`|A unique identifier.|
+
 
 # UDP Submissions
 ## Structure
 `<sensor_name>[space]<payload>`
 
-## Example
+## Bash Example
 ```
 echo -n "my_sensor_name 27.2" >/dev/udp/localhost/54545
+```
+## Arduino Code
+```
+void udp(String sensor, String message) {
+  String payload = sensor + " " + message;
+  char p[50];
+  payload.toCharArray(p, 50);
+  if (DEBUG==false) {
+    Udp.beginPacket(server_ip, udp_port);
+    Udp.write(p);
+    Udp.endPacket();
+  } else {
+    Serial.println(p);
+  }
+}
 ```
 
 # HTTP Submissions
@@ -85,25 +101,50 @@ Note, your gateway API should be idempotent. File names uniquely identify submis
 
 
 # Setup
-## Installation
+## Base Installation
 ```
 sudo mkdir /var/iot_relay
 sudo chmod 777 /var/iot_relay/
 
-cd ~/relay
+cd ~
+git clone git@github.com:renenw/relay.git
+cd relay
 npm install mkdirp --save
 npm install express --save
 npm install axios --save
 ```
-## Service creation
-I took [this article's](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-node-js-application-for-production-on-ubuntu-18-04) guidance.
-### Setup Environment Variables
+Test: `node server`
+```
+pi@iot-relay:~/relay $ node server
+Starting: iot-relay
+HTTP on 3553
+UDP on 54545
+Working directory: /var/iot_relay
+API endpoint: https://<my gateway>/ingest
+UDP listener listening on 0.0.0.0:54545
+HTTP listener started on port 3553
+```
+
+## Setup Environment Variables
 On a Raspberry Pi: `sudo nano /etc/procfile` and add your environment variables at the end:
 ```
 export GATEWAY=https://<your gateway>/ingest
 export API_KEY=<your key>
 ```
 I restart the device, and test that our changes worked by calling: `printenv GATEWAY`
+
+## Service creation
+I took [this article's](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-node-js-application-for-production-on-ubuntu-18-04) guidance.
+```
+sudo npm install pm2@latest -g
+pm2 start server.js
+pm2 startup systemd
+```
+And, run the command as instructed by the previous step.
+
+Finally, and I'm not entirely sure why: `pm2 save`
+
+
 
 ## Clean Up Cron
 I use a nightly cron:
