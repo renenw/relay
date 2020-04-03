@@ -4,12 +4,15 @@
 
 const fs = require('fs');
 const mkdirp = require('mkdirp');
-// const request = require('request');
 const os = require("os");
+const datagram = require('dgram');
+const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios')
 
 const DEVICE_NAME = process.env.DEVICE_NAME || os.hostname();
-const GATEWAY = 'https://api.121.co.za/relay'
-const API_KEY = process.env.AWS_API_KEY
+const GATEWAY = process.env.GATEWAY || 'https://relay.free.beeceptor.com'
+const API_KEY = process.env.API_KEY
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
 const HTTP_PORT = process.env.HTTP_PORT || 3553
 const UDP_PORT = process.env.UDP_PORT || 54545
@@ -18,6 +21,13 @@ const IN = HOME_DIRECTORY + '/in'
 const WIP = HOME_DIRECTORY + '/wip'
 const RETRY = HOME_DIRECTORY + '/retry'
 const DONE = HOME_DIRECTORY + '/done'
+
+const http_post_options = {
+  headers: {
+    'x-api-key': API_KEY,
+    'Content-Type': 'application/json'
+  }
+}
 
 let failures = 0;
 let successes = 0;
@@ -44,8 +54,8 @@ setInterval(uploadCounts, 60000);
 
 
 ////////////////////////////////////// UDP Submissions
-const dgram = require('dgram');
-const udp_server = dgram.createSocket('udp4');
+
+const udp_server = datagram.createSocket('udp4');
 
 udp_server.on('error', (err) => {
   logString(`udp_server error:\n${err.stack}`);
@@ -72,9 +82,6 @@ udp_server.bind(UDP_PORT);
 
 
 ////////////////////////////////////// Web Posts
-
-const express = require('express');
-const bodyParser = require('body-parser');
 
 let http_server = express();
 let jsonParser = bodyParser.json({ type: function() {return true;} });
@@ -110,13 +117,6 @@ http_server.listen(http_server.get('port'), ()=>{
   logString('HTTP listener started on port ' + http_server.get('port'));
 });
 
-function write(data) {
-  data.received = data.received || ((new Date()).getTime() / 1000.0);
-  data.uid = (data.uid || data.received + '.' + Math.floor(Math.random()*100000000));;
-  let fileName = IN + '/' + data.uid;
-  fs.writeFile(fileName, JSON.stringify(data), (err)=>{ if (err) throw err; });
-}
-
 
 ////////////////////////////////////// File System watcher
 
@@ -142,19 +142,22 @@ watch_wip.on('change', function name(event, filename) {
 });
 
 
-////////////////////////////////////// Helper functions
-
-function logString(s) {
-  console.log(s)
-}
+////////////////////////////////////// Uploader
 
 function postFile(filename, data) {
+  axios.post(GATEWAY, data, http_post_options)
+    .then((res) => { postSuccess(filename); })
+    .catch((error) => {
+      logString('Failed to relay ' + filename);
+      console.log(error);
+      postFailure(filename);
+    });
   // request.post(GATEWAY, {timeout: 2000, body: data, headers: { 'x-api-key': API_KEY }}, function(err, response) {
   //   if (err || response && response.statusCode!==202) {
   //     console.log('Failed to relay ' + filename);
   //     console.log('Response: ' + (response && response.statusCode));
   //     console.log('Error: ' + err.message);
-  //     postFailure(filename);
+  
   //   } else {
   //     postSuccess(filename);
   //   }
@@ -163,13 +166,30 @@ function postFile(filename, data) {
 
 function postSuccess(filename) {
   let directory = DONE + '/' + (new Date().toISOString().substring(0,10));
-  mkdirp(directory, (err, made) => { moveFile(WIP, filename, directory) });
+  mkdirp.sync(directory);
+  moveFile(WIP, filename, directory);
   successes = successes + 1;
 }
 
 function postFailure(filename) {
   moveFile(WIP, filename, RETRY);
   failures = failures + 1;
+}
+
+
+
+
+////////////////////////////////////// Helper functions
+
+function logString(s) {
+  console.log(s)
+}
+
+function write(data) {
+  data.received = data.received || ((new Date()).getTime() / 1000.0);
+  data.uid = (data.uid || data.received + '.' + Math.floor(Math.random()*100000000));;
+  let fileName = IN + '/' + data.uid;
+  fs.writeFile(fileName, JSON.stringify(data), (err)=>{ if (err) throw err; });
 }
 
 function moveFile(fromDirectory, filename, toDirectory) {

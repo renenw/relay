@@ -11,9 +11,10 @@ This code runs on a Raspberry Pi 3b, which also hosts a Nginx proxy to deal with
 
 I have several Arduino devices that track things like the depth of my swimming pool, as well as folk entering a PIN code to open the front gate. It is convenient for these devices to communicate events using UDP. However, AWS Gateway doesn't allow UDP endpoints and I'm not convinced embedded devices should be making HTML type requests.
 
-This little server acts as a relay, pushing UDP requests (and HTML requets) to AWS.
-# End Point
-A JSON object is constructed with four fields:
+This little server acts as a relay, pushing UDP requests (and HTTP requests) to AWS.
+
+# Relay End Point
+A JSON object is constructed with four fields, and POST'ed to the `GATEWAY`. The JSON object is as follows:
 |Field|Description|
 |-|-|
 |`source`|The device or source from which this message originates|
@@ -60,43 +61,75 @@ curl --location --request POST 'localhost:3553' \
   }
 }'
 ```
-# Architecture
+# Keep Alive
+Every minute, the relay server uploads a packet reflecting success and failure counts since the last submission:
+```
+{
+  "source":"ubuntu1910",
+  "payload":{"successes":0,"failures":0},
+  "received":1585838990.455,
+  "uid":"1585838990.455.50740082"
+}
+```
+# Queue Processing
 
-Relies on directories as a queing mechanism.
+Relies on directories as a queuing mechanism.
 
 1. Submissions (HTTP or UDP) are initially written out as JSON files in the IN directory.
-1. Node reacts to these new files, copying them into a WIP directory.
-1. From the WIP directory, they are pushed, via HTTP, to an AWS Gateway.
-1. Failures are moved to a RETRY directory, and periodically reattempted.
+2. Node reacts to these new files, copying them into a WIP directory.
+3. From the WIP directory, they are pushed, via HTTP, to an AWS Gateway.
+4. Failures are moved to a RETRY directory, and periodically reattempted.
+5. You probably want to delete files that have been successfully processed. I use a cron (see below)/
 
-Note, your gateway API should be idempontent. File names uniquely identify submissions.
+Note, your gateway API should be idempotent. File names uniquely identify submissions.
 
-# Config
 
+# Setup
+## Installation
+```
 sudo mkdir /var/iot_relay
 sudo chmod 777 /var/iot_relay/
 
+cd ~/relay
 npm install mkdirp --save
-npm install request --save
 npm install express --save
+npm install axios --save
+```
+## Service creation
+I took [this article's](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-node-js-application-for-production-on-ubuntu-18-04) guidance.
+### Setup Environment Variables
+On a Raspberry Pi: `sudo nano /etc/procfile` and add your environment variables at the end:
+```
+export GATEWAY=https://<your gateway>/ingest
+export API_KEY=<your key>
+```
+I restart the device, and test that our changes worked by calling: `printenv GATEWAY`
 
+## Clean Up Cron
+I use a nightly cron:
 
-## Environment
+`find /var/iot_relay/done/* -maxdepth 1 -type d -ctime +7  | xargs rm -rf`
+# Environment Variables
 
 |Variable|Default|Purpose|
 |-|-|-|
-|DEVICE_NAME|*System host name*|Used as the `source` in the submission of metrics|
-|UDP_PORT|`54545`|UDP port on which server will listen|
-|HTTP_PORT|`3553`|TCP port on which HTTP server will listen|
-|GATEWAY|*None*|AWS Gateway URL where payloads will be posted|
-|MESSAGE_DIRECTORY|`/var/iot_relay`|Directory where messages are stored. Several subdirectories will be created beneath this root to manage message flow to AWS|
-|AWS_API_KEY|*None*|AWS API key|
+|DEVICE_NAME|*System host name*|Used as the `source` in the submission of metrics.|
+|GATEWAY|https://relay.free.beeceptor.com|Endpoint messages will be forwarded to.|
+|UDP_PORT|`54545`|UDP port on which server will listen.|
+|HTTP_PORT|`3553`|TCP port on which HTTP server will listen.|
+|GATEWAY|*None*|AWS Gateway URL where payloads will be posted.|
+|MESSAGE_DIRECTORY|`/var/iot_relay`|Directory where messages are stored. Several sub-directories will be created beneath this root to manage message flow to AWS.|
+|API_KEY|*None*|I leverage AWS Gateway's API key mechanism to secure requests. This `API_KEY` is used to set the `x-api-key` header on submissions.|
 
 ### Samples
+Typically you will just set the 
 ```
-export DEVICE_NAME=
+export DEVICE_NAME=my_arduino
+export GATEWAY=https://relay.free.beeceptor.com
 export HTTP_PORT=3000
 export UDP_PORT=3000
-export MESSAGE_DIRECTORY=
-export AWS_API_KEY=
+export MESSAGE_DIRECTORY=/blah
+export API_KEY=abcd
 ```
+# Amazon Setup
+API Gateway --> SNS --> lamda: [see](https://www.alexdebrie.com/posts/aws-api-gateway-service-proxy/)
