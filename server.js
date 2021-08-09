@@ -1,5 +1,3 @@
-// node server.js
-
 ////////////////////////////////////// Init
 
 const fs = require('fs');
@@ -8,9 +6,11 @@ const os = require("os");
 const datagram = require('dgram');
 const express = require('express');
 const bodyParser = require('body-parser');
-const axios = require('axios')
+const axios = require('axios');
+const mqtt = require('mqtt');
 
 const DEVICE_NAME = process.env.DEVICE_NAME || os.hostname();
+const MQTT_BROKER = process.env.MQTT_BROKER;
 const GATEWAY = process.env.GATEWAY || 'https://relay.free.beeceptor.com'
 const API_KEY = process.env.API_KEY || ''
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
@@ -44,7 +44,21 @@ logString(`Starting: ${DEVICE_NAME}`);
 logString(`HTTP on ${HTTP_PORT}`);
 logString(`UDP on ${UDP_PORT}`);
 logString(`Working directory: ${HOME_DIRECTORY}`);
-logString(`API endpoint: ${GATEWAY}`);
+
+if (GATEWAY) {
+  logString(`API endpoint: ${GATEWAY}`);
+} else {
+  logString('API endpoint not defined. Messages will not be posted to an API Gateway');
+}
+
+if (MQTT_BROKER) {
+  logString(`MQTT broker: ${MQTT_BROKER}`);
+} else {
+  logString('MQTT broker not defined. Messages will not be published to MQTT.');
+}
+
+let mqttClient = null;
+if (MQTT_BROKER) { mqttClient = mqtt.connect(`mqtt://${MQTT_BROKER}`); }
 
 moveFiles(IN, RETRY);
 moveFiles(WIP, RETRY);
@@ -135,12 +149,20 @@ watch_wip.on('change', function name(event, filename) {
         if (err) {
           logString('Unable to read file: ' + err); 
         } else {
-          postFile(filename, data);
+          if (mqttClient) { postMqtt(data) };
+          if (GATEWAY) { postFile(filename, data) };
         }
       });
   }
 });
 
+
+////////////////////////////////////// MQTT
+
+function postMqtt(data) {
+  json = JSON.parse(data);
+  mqttClient.publish(json.source, JSON.stringify(json.payload));
+}
 
 ////////////////////////////////////// Uploader
 

@@ -1,17 +1,19 @@
 
+This little server acts as a relay, pushing UDP requests (and HTTP requests) to an HTTP endpoint (AWS) and or MQTT (Home Assistant).
+
 # Relay
 
-Listens on HTTP, and to UDP, and relays what is received to an AWS Gateway. From the Gateway, you can leverage standard AWS mechanisms for processing the messages.
+Listens on HTTP, and to UDP, and relays what is received to an HTTP endpoint, and or to an MQtt broker. In may case, the end point is an AWS Gateway, and MQTT is a Home Assistant system.
+
+Of course, grom the Gateway, you can leverage standard AWS mechanisms for processing the messages.
 
 Examples of Arduino applications that feeds this relay can be seen [here](https://github.com/renenw/harduino). The key function can be seen below.
 
-This code runs on a Raspberry Pi 3b, which also hosts a Nginx proxy to deal with inbound requests.
+This code runs on a Raspberry Pi 3b, which also hosts a Nginx proxy to deal with inbound HTTP requests.
 
 # Why?
 
 I have several Arduino devices that track things like the depth of my swimming pool, as well as folk entering a PIN code to open the front gate. It is convenient for these devices to communicate events using UDP. However, AWS Gateway doesn't allow UDP endpoints and I'm not convinced embedded devices should be making HTML type requests.
-
-This little server acts as a relay, pushing UDP requests (and HTTP requests) to AWS.
 
 # Relay Gateway End Point
 A JSON object is constructed with four fields, and POST'ed to the `GATEWAY` (typically, a AWS API Gateway connected to an SNS topic). The JSON object submitted is as follows:
@@ -30,6 +32,9 @@ A JSON object is constructed with four fields, and POST'ed to the `GATEWAY` (typ
 |`received`|The time, in seconds with millisecond resolution, that this packet was written to a queue by the relay server.|
 |`uid`|A unique identifier.|
 
+# MQTT End Point
+
+Received data is pushed to an MQTT broker, with the `sensor name` used as a topic name.
 
 # UDP Submissions
 ## Structure
@@ -93,7 +98,7 @@ Relies on directories as a queuing mechanism.
 
 1. Submissions (HTTP or UDP) are initially written out as JSON files in the IN directory.
 2. Node reacts to these new files, copying them into a WIP directory.
-3. From the WIP directory, they are pushed, via HTTP, to an AWS Gateway.
+3. From the WIP directory, they are pushed first to MQTT (if configured), and then, via HTTP, to an AWS Gateway.
 4. Failures are moved to a RETRY directory, and periodically reattempted.
 5. You probably want to delete files that have been successfully processed. I use a cron (see below)/
 
@@ -112,6 +117,7 @@ cd relay
 npm install mkdirp --save
 npm install express --save
 npm install axios --save
+npm install mqtt --save
 ```
 Test: `node server`
 ```
@@ -126,11 +132,18 @@ HTTP listener started on port 3553
 ```
 
 ## Setup Environment Variables
-On a Raspberry Pi: `sudo nano /etc/procfile` and add your environment variables at the end:
+On a Raspberry Pi: `sudo nano /etc/profile` and add your environment variables at the end:
 ```
 export GATEWAY=https://<your gateway>/ingest
 export API_KEY=<your key>
+export MQTT_BROKER=<localhost, or your MQTT broker IP>
 ```
+
+**NB:** To make pm2 refresh its understanding of these environment variables, you must run: `pm2 start server --update-env`
+
+For details on how these variables are used, see Environment Variables below. In particular,  the API_KEY is passed to the Gateway POST request as an `x-api-key` header.
+
+
 I restart the device, and test that our changes worked by calling: `printenv GATEWAY`
 
 ## Service creation
@@ -144,7 +157,18 @@ And, run the command as instructed by the previous step.
 
 Finally, and I'm not entirely sure why: `pm2 save`
 
+### Useful PM2 commands
 
+```
+pm2 list
+pm2 stop server
+pm2 start server
+pm2 start server --update-env
+pm2 restart server
+pm2 info server
+pm2 logs server
+pm2 monit
+```
 
 ## Clean Up Cron
 I use a nightly cron:
@@ -161,6 +185,9 @@ I use a nightly cron:
 |GATEWAY|*None*|AWS Gateway URL where payloads will be posted.|
 |MESSAGE_DIRECTORY|`/var/iot_relay`|Directory where messages are stored. Several sub-directories will be created beneath this root to manage message flow to AWS.|
 |API_KEY|*None*|I leverage AWS Gateway's API key mechanism to secure requests. This `API_KEY` is used to set the `x-api-key` header on submissions.|
+|MQTT_BROKER|*None*|IP address of MQTT broker. If your broker is running on the same Pi, `localhost`. If this variable is not set, MQTT messages will not be sent.|
+### Gotcha
+To make pm2 refresh its understanding of these environment variables, you must run: `pm2 start server --update-env`
 
 ### Samples
 Typically you will just set the 
@@ -171,6 +198,7 @@ export HTTP_PORT=3000
 export UDP_PORT=3000
 export MESSAGE_DIRECTORY=/blah
 export API_KEY=abcd
+export MQTT_BROKER=localhost
 ```
 # Amazon Setup
 API Gateway --> SNS --> lamda: [see](https://www.alexdebrie.com/posts/aws-api-gateway-service-proxy/)
