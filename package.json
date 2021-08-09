@@ -9,7 +9,7 @@
   "author": "renen",
   "license": "MIT",
   "dependencies": {
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "express": "^4.17.1",
     "mkdirp": "^1.0.3",
     "mqtt": "^4.2.8"
