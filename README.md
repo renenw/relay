@@ -139,7 +139,7 @@ export API_KEY=<your key>
 export MQTT_BROKER=<localhost, or your MQTT broker IP>
 ```
 
-**NB:** To make pm2 refresh its understanding of these environment variables, you must run: `pm2 start server --update-env`
+**NB:** To make pm2 refresh its understanding of these environment variables, you must run: `pm2 start server --update-env`. Nope, perhaps: `pm2 restart all --update-env`?
 
 For details on how these variables are used, see Environment Variables below. In particular,  the API_KEY is passed to the Gateway POST request as an `x-api-key` header.
 
@@ -163,11 +163,12 @@ Finally, and I'm not entirely sure why: `pm2 save`
 pm2 list
 pm2 stop server
 pm2 start server
-pm2 start server --update-env
+pm2 start server --update-env   # not sure this worked
 pm2 restart server
 pm2 info server
 pm2 logs server
 pm2 monit
+pm2 restart all --update-env    # this may have worked - but also ran an update of pm2
 ```
 
 ## Clean Up Cron
