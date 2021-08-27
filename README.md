@@ -36,6 +36,8 @@ A JSON object is constructed with four fields, and POST'ed to the `GATEWAY` (typ
 
 Received data is pushed to an MQTT broker, with the `sensor name` used as a topic name.
 
+To test that MQTT is working as expected, try subscribing to all topics: `mosquitto_sub -v -t '#'`.
+
 # UDP Submissions
 ## Structure
 `<sensor_name>[space]<payload>`
