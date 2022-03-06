@@ -11,7 +11,7 @@ const mqtt = require('mqtt');
 
 const DEVICE_NAME = process.env.DEVICE_NAME || os.hostname();
 const MQTT_BROKER = process.env.MQTT_BROKER;
-const GATEWAY = process.env.GATEWAY || 'https://relay.free.beeceptor.com'
+const GATEWAY = process.env.GATEWAY // || 'https://relay.free.beeceptor.com'
 const API_KEY = process.env.API_KEY || ''
 const HOME_DIRECTORY = process.env.MESSAGE_DIRECTORY || '/var/iot_relay';
 const HTTP_PORT = process.env.HTTP_PORT || 3553

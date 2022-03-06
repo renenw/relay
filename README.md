@@ -5,7 +5,7 @@ This little server acts as a relay, pushing UDP requests (and HTTP requests) to 
 
 Listens on HTTP, and to UDP, and relays what is received to an HTTP endpoint, and or to an MQtt broker. In may case, the end point is an AWS Gateway, and MQTT is a Home Assistant system.
 
-Of course, grom the Gateway, you can leverage standard AWS mechanisms for processing the messages.
+Of course, from the Gateway, you can leverage standard AWS mechanisms for processing the messages.
 
 Examples of Arduino applications that feeds this relay can be seen [here](https://github.com/renenw/harduino). The key function can be seen below.
 
@@ -109,12 +109,14 @@ Note, your gateway API should be idempotent. File names uniquely identify submis
 
 # Setup
 ## Base Installation
+I used these instructions to install node and npm: https://thisdavej.com/beginners-guide-to-installing-node-js-on-a-raspberry-pi/
+
 ```
 sudo mkdir /var/iot_relay
 sudo chmod 777 /var/iot_relay/
 
 cd ~
-git clone git@github.com:renenw/relay.git
+git clone https://github.com/renenw/relay.git
 cd relay
 npm install mkdirp --save
 npm install express --save
