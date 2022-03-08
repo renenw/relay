@@ -147,10 +147,22 @@ watch_wip.on('change', function name(event, filename) {
   if (fs.existsSync(sourceFile)) {
     fs.readFile(sourceFile, 'utf8', (err, data) => {
         if (err) {
-          logString('Unable to read file: ' + err); 
+          logString('Unable to read file: ' + err);
         } else {
-          if (mqttClient) { postMqtt(data) };
-          if (GATEWAY) { postFile(filename, data) };
+          let failed = true;
+          try {
+            if (mqttClient) { postMqtt(data) };
+            if (GATEWAY) { postFile(filename, data) };
+            failed = false;
+          } catch(error) {
+            logString('Failed to relay ' + filename);
+            logString(error);
+          }
+          if (failed) {
+            postFailure(filename);
+          } else {
+            postSuccess(filename);
+          }
         }
       });
   }
@@ -171,12 +183,6 @@ function postFile(filename, data) {
   .then((res) => {
     let awsRequestId = res.headers['x-amzn-requestid'];
     console.log(awsRequestId ? `Uploaded. Request ID: ${awsRequestId}` : 'Uploaded. No request id.')
-    postSuccess(filename);
-  })
-  .catch((error) => {
-    logString('Failed to relay ' + filename);
-    console.log(error);
-    postFailure(filename);
   });
 }
 
